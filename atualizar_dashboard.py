@@ -599,13 +599,12 @@ def update_html(path, mes, ano, data_js, carteira, ft700, site_data, hoje, last_
             pass
         raise
 
-# ── Git Push ──────────────────────────────────────────────────────────────────
+# ── Git Push via API ─────────────────────────────────────────────────────────
 def git_push(mes_nome, ano):
-    """Clona o repo, copia os arquivos atualizados e faz push para o GitHub.
-    Opera em /tmp para evitar problemas com filesystem montado do Windows."""
-    import subprocess, shutil as sh
+    """Envia os arquivos para o GitHub via REST API (sem git clone).
+    Muito mais rápido: apenas 2 chamadas HTTP por arquivo."""
+    import urllib.request, base64, json as _json
 
-    # Ler configurações do .env
     env_file = os.path.join(SCRIPT_DIR, ".env")
     if not os.path.exists(env_file):
         log("  AVISO: .env não encontrado — push GitHub ignorado")
@@ -618,60 +617,67 @@ def git_push(mes_nome, ano):
             cfg[k.strip()] = v.strip()
 
     token = cfg.get("GITHUB_TOKEN", "")
-    repo  = cfg.get("GITHUB_REPO", "")
-    user  = cfg.get("GITHUB_USER", "FuelTech")
-    email = cfg.get("GITHUB_EMAIL", "")
-
-    if not token or not repo:
-        log("  AVISO: GITHUB_TOKEN ou GITHUB_REPO ausentes no .env")
+    org   = cfg.get("GITHUB_USER", "")
+    repo  = "dashboard-comercial-fueltech"
+    if not token or not org:
+        log("  AVISO: GITHUB_TOKEN ou GITHUB_USER ausentes no .env")
         return
 
-    repo_auth = repo.replace("https://", f"https://{token}@")
-    tmp = "/tmp/dashboard-git-push"
+    headers = {
+        "Authorization": f"token {token}",
+        "Content-Type": "application/json",
+        "User-Agent": "FuelTech-Dashboard/1.0"
+    }
+    commit_msg = f"auto: {mes_nome}/{ano} — {date.today().strftime('%d/%m/%Y')}"
+    author     = {"name": cfg.get("GITHUB_USER","FuelTech"),
+                  "email": cfg.get("GITHUB_EMAIL","noreply@fueltech.com.br")}
 
-    try:
-        sh.rmtree(tmp, ignore_errors=True)
+    files_to_push = [
+        (DASHBOARD,                  os.path.basename(DASHBOARD)),
+        (os.path.abspath(__file__),  os.path.basename(__file__)),
+    ]
 
-        log("  Clonando repositório...")
-        r = subprocess.run(
-            ["git", "clone", "--depth=1", repo_auth, tmp],
-            capture_output=True, text=True, timeout=60
-        )
-        if r.returncode != 0:
-            log(f"  ERRO no clone: {r.stderr.strip()[:200]}")
-            return
+    any_updated = False
+    for local_path, remote_name in files_to_push:
+        api_url = f"https://api.github.com/repos/{org}/{repo}/contents/{remote_name}"
 
-        # Copiar arquivos atualizados
-        sh.copy2(DASHBOARD, os.path.join(tmp, os.path.basename(DASHBOARD)))
-        sh.copy2(os.path.abspath(__file__), os.path.join(tmp, os.path.basename(__file__)))
+        # 1. Obter SHA atual do arquivo (necessário para update)
+        sha = None
+        try:
+            req = urllib.request.Request(api_url, headers=headers)
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                sha = _json.loads(resp.read()).get("sha")
+        except urllib.error.HTTPError as e:
+            if e.code != 404:
+                log(f"  AVISO: erro ao buscar SHA de {remote_name}: {e}")
+                continue
 
-        env = os.environ.copy()
-        env["GIT_AUTHOR_NAME"]     = user
-        env["GIT_AUTHOR_EMAIL"]    = email
-        env["GIT_COMMITTER_NAME"]  = user
-        env["GIT_COMMITTER_EMAIL"] = email
+        # 2. Ler conteúdo local e encodar em base64
+        raw = open(local_path, "rb").read()
+        b64 = base64.b64encode(raw).decode()
 
-        for cmd in [
-            ["git", "-C", tmp, "add", "-A"],
-            ["git", "-C", tmp, "commit", "-m",
-             f"auto: atualização {mes_nome}/{ano} — {date.today().strftime('%d/%m/%Y')}"],
-            ["git", "-C", tmp, "push", "origin", "main"],
-        ]:
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=60, env=env)
-            if r.returncode != 0:
-                if "nothing to commit" in r.stdout + r.stderr:
-                    log("  GitHub: sem alterações para commitar")
-                    return
-                log(f"  ERRO git ({' '.join(cmd[2:4])}): {r.stderr.strip()[:200]}")
-                return
+        # 3. PUT para criar/atualizar o arquivo
+        body = {"message": commit_msg, "content": b64, "author": author}
+        if sha:
+            body["sha"] = sha
 
-        log(f"  ✓ GitHub atualizado: {repo.replace('https://','')}")
+        try:
+            req = urllib.request.Request(
+                api_url, method="PUT",
+                data=_json.dumps(body).encode(),
+                headers=headers
+            )
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                result = _json.loads(resp.read())
+                action = "atualizado" if sha else "criado"
+                log(f"  ✓ GitHub {action}: {remote_name}")
+                any_updated = True
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode()[:200]
+            log(f"  ERRO ao enviar {remote_name}: {e.code} — {err_body}")
 
-    except Exception as e:
-        log(f"  ERRO git push: {e}")
-    finally:
-        sh.rmtree(tmp, ignore_errors=True)
-
+    if not any_updated:
+        log("  GitHub: nenhum arquivo atualizado")
 
 
 # ── Vercel Status ──────────────────────────────────────────────────────────────
