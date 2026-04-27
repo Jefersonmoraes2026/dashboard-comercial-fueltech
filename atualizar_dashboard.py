@@ -599,6 +599,80 @@ def update_html(path, mes, ano, data_js, carteira, ft700, site_data, hoje, last_
             pass
         raise
 
+# ── Git Push ──────────────────────────────────────────────────────────────────
+def git_push(mes_nome, ano):
+    """Clona o repo, copia os arquivos atualizados e faz push para o GitHub.
+    Opera em /tmp para evitar problemas com filesystem montado do Windows."""
+    import subprocess, shutil as sh
+
+    # Ler configurações do .env
+    env_file = os.path.join(SCRIPT_DIR, ".env")
+    if not os.path.exists(env_file):
+        log("  AVISO: .env não encontrado — push GitHub ignorado")
+        return
+
+    cfg = {}
+    for line in open(env_file).read().splitlines():
+        if "=" in line and not line.startswith("#"):
+            k, v = line.split("=", 1)
+            cfg[k.strip()] = v.strip()
+
+    token = cfg.get("GITHUB_TOKEN", "")
+    repo  = cfg.get("GITHUB_REPO", "")
+    user  = cfg.get("GITHUB_USER", "FuelTech")
+    email = cfg.get("GITHUB_EMAIL", "")
+
+    if not token or not repo:
+        log("  AVISO: GITHUB_TOKEN ou GITHUB_REPO ausentes no .env")
+        return
+
+    repo_auth = repo.replace("https://", f"https://{token}@")
+    tmp = "/tmp/dashboard-git-push"
+
+    try:
+        sh.rmtree(tmp, ignore_errors=True)
+
+        log("  Clonando repositório...")
+        r = subprocess.run(
+            ["git", "clone", "--depth=1", repo_auth, tmp],
+            capture_output=True, text=True, timeout=60
+        )
+        if r.returncode != 0:
+            log(f"  ERRO no clone: {r.stderr.strip()[:200]}")
+            return
+
+        # Copiar arquivos atualizados
+        sh.copy2(DASHBOARD, os.path.join(tmp, os.path.basename(DASHBOARD)))
+        sh.copy2(os.path.abspath(__file__), os.path.join(tmp, os.path.basename(__file__)))
+
+        env = os.environ.copy()
+        env["GIT_AUTHOR_NAME"]     = user
+        env["GIT_AUTHOR_EMAIL"]    = email
+        env["GIT_COMMITTER_NAME"]  = user
+        env["GIT_COMMITTER_EMAIL"] = email
+
+        for cmd in [
+            ["git", "-C", tmp, "add", "-A"],
+            ["git", "-C", tmp, "commit", "-m",
+             f"auto: atualização {mes_nome}/{ano} — {date.today().strftime('%d/%m/%Y')}"],
+            ["git", "-C", tmp, "push", "origin", "main"],
+        ]:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=60, env=env)
+            if r.returncode != 0:
+                if "nothing to commit" in r.stdout + r.stderr:
+                    log("  GitHub: sem alterações para commitar")
+                    return
+                log(f"  ERRO git ({' '.join(cmd[2:4])}): {r.stderr.strip()[:200]}")
+                return
+
+        log(f"  ✓ GitHub atualizado: {repo.replace('https://','')}")
+
+    except Exception as e:
+        log(f"  ERRO git push: {e}")
+    finally:
+        sh.rmtree(tmp, ignore_errors=True)
+
+
 # ── Main ───────────────────────────────────────────────────────────────────────
 def main():
     log("=" * 60)
@@ -626,6 +700,10 @@ def main():
     # 5. Atualizar HTML
     log("Atualizando HTML...")
     update_html(DASHBOARD, mes, ano, data_js, carteira, ft700, site_data, hoje, last_day_d)
+
+    # 6. Enviar para o GitHub
+    log("Enviando para GitHub...")
+    git_push(MESES_NOME[mes], ano)
 
     log("=" * 60)
     log("✓ Atualização concluída com sucesso!")
