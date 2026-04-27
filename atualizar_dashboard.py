@@ -509,7 +509,7 @@ def replace_text(content, old, new):
 def build_cart_meses(mes_ref, ano_ref):
     """Gera CART_MESES e CART_ML de Jan/2025 até o mês de referência."""
     meses, labels = [], []
-    ano, mes = 2024, 1
+    ano, mes = 2023, 1
     abrev_ano = {2023:"23", 2024:"24", 2025:"25", 2026:"26", 2027:"27"}
     nomes_curtos = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]
     while (ano, mes) <= (ano_ref, mes_ref):
