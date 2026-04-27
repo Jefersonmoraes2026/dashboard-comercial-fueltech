@@ -1,0 +1,10 @@
+# Dados sensíveis — não subir para o GitHub
+*.xlsx
+*.xls
+*.bak
+*.log
+.env
+
+# Python
+__pycache__/
+*.pyc
