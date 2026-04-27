@@ -673,6 +673,57 @@ def git_push(mes_nome, ano):
         sh.rmtree(tmp, ignore_errors=True)
 
 
+
+# ── Vercel Status ──────────────────────────────────────────────────────────────
+def vercel_wait_deploy():
+    """Aguarda o Vercel processar o deploy disparado pelo git push e loga a URL."""
+    import subprocess, time
+
+    env_file = os.path.join(SCRIPT_DIR, ".env")
+    if not os.path.exists(env_file):
+        return
+
+    cfg = {}
+    for line in open(env_file).read().splitlines():
+        if "=" in line and not line.startswith("#"):
+            k, v = line.split("=", 1)
+            cfg[k.strip()] = v.strip()
+
+    vtoken  = cfg.get("VERCEL_TOKEN", "")
+    proj_id = cfg.get("VERCEL_PROJECT_ID", "")
+    if not vtoken or not proj_id:
+        return
+
+    import urllib.request, json as _json
+    url = f"https://api.vercel.com/v6/deployments?projectId={proj_id}&limit=1&target=production"
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {vtoken}"})
+
+    for attempt in range(12):   # até 2 minutos
+        time.sleep(10)
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = _json.loads(resp.read())
+            deployments = data.get("deployments", [])
+            if not deployments:
+                continue
+            d = deployments[0]
+            state = d.get("readyState", "?")
+            deploy_url = d.get("url", "")
+            if state == "READY":
+                log(f"  ✓ Vercel online: https://{deploy_url}")
+                return
+            elif state == "ERROR":
+                log(f"  ✗ Vercel deploy com erro: https://{deploy_url}")
+                return
+            else:
+                log(f"  Vercel: {state}...")
+        except Exception as e:
+            log(f"  Vercel status: {e}")
+            return
+
+    log("  Vercel: timeout aguardando deploy (verifique manualmente)")
+
+
 # ── Main ───────────────────────────────────────────────────────────────────────
 def main():
     log("=" * 60)
@@ -704,6 +755,7 @@ def main():
     # 6. Enviar para o GitHub
     log("Enviando para GitHub...")
     git_push(MESES_NOME[mes], ano)
+    vercel_wait_deploy()
 
     log("=" * 60)
     log("✓ Atualização concluída com sucesso!")
