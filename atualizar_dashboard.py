@@ -227,7 +227,7 @@ def build_carteira(rows, cols, hoje):
             continue
 
         cli_agg = defaultdict(lambda: {
-            "fat":0.0,"f25":0.0,"f26":0.0,"fja25":0.0,
+            "fat":0.0,"f23":0.0,"f24":0.0,"f25":0.0,"f26":0.0,"fja25":0.0,
             "nfs":set(),"its":0,"dates":[],
             "fmes":defaultdict(float),"prods":defaultdict(float),"can":None
         })
@@ -248,7 +248,11 @@ def build_carteira(rows, cols, hoje):
 
             c = cli_agg[cli]
             c["fat"] += fat
-            if ano == 2025:
+            if ano == 2023:
+                c["f23"] += fat
+            elif ano == 2024:
+                c["f24"] += fat
+            elif ano == 2025:
                 c["f25"] += fat
                 if mes <= 4:
                     c["fja25"] += fat
@@ -281,6 +285,8 @@ def build_carteira(rows, cols, hoje):
 
             cli_final[cli] = {
                 "fat":   round(c["fat"],   2),
+                "f23":   round(c["f23"],   2),
+                "f24":   round(c["f24"],   2),
                 "f25":   round(c["f25"],   2),
                 "f26":   round(c["f26"],   2),
                 "fja25": round(c["fja25"], 2),
@@ -290,6 +296,8 @@ def build_carteira(rows, cols, hoje):
                 "rec":   dias_desde(last_d, hoje),
                 "a26":   a26,
                 "a25":   a25,
+                "a24":   c["f24"] > 0,
+                "a23":   c["f23"] > 0,
                 "fmes":  {k: round(v, 2) for k, v in sorted(c["fmes"].items())},
                 "tp":    [[p, round(v, 2)] for p, v in tp5],
                 "yoy":   yoy,
@@ -501,8 +509,8 @@ def replace_text(content, old, new):
 def build_cart_meses(mes_ref, ano_ref):
     """Gera CART_MESES e CART_ML de Jan/2025 até o mês de referência."""
     meses, labels = [], []
-    ano, mes = 2025, 1
-    abrev_ano = {2025:"25", 2026:"26", 2027:"27"}
+    ano, mes = 2024, 1
+    abrev_ano = {2023:"23", 2024:"24", 2025:"25", 2026:"26", 2027:"27"}
     nomes_curtos = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]
     while (ano, mes) <= (ano_ref, mes_ref):
         meses.append(f"{ano}-{mes:02d}")
