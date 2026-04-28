@@ -205,7 +205,12 @@ def load_all_excels():
         log(f"  ✓ {os.path.basename(path)}: {added:,} linhas únicas · {periodo}")
 
     log(f"  Total mesclado: {len(all_rows):,} linhas de {len(files)} arquivo(s)")
-    return all_rows, cols_ref, files[-1]
+    # Para DATA/FT700/SITE: usar o mais recente arquivo COMPLETO (>= 1MB)
+    # Arquivos pequenos têm dados do dia mas não cobrem o mês inteiro
+    comprehensive = [f for f in files if os.path.getsize(f) >= 1_000_000]
+    latest_complete = comprehensive[-1] if comprehensive else files[-1]
+    log(f"  Arquivo base para métricas do mês: {os.path.basename(latest_complete)}")
+    return all_rows, cols_ref, latest_complete
 
 def detect_ref_month(rows, cols):
     """Detecta mês/ano de referência = mês mais recente nos dados."""
