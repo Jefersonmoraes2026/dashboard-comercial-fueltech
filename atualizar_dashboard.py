@@ -102,8 +102,17 @@ def list_complete_excels():
     return files  # ordenados do mais antigo ao mais recente (pelo nome)
 
 def find_latest_excel():
-    """Retorna apenas o arquivo mais recente (>= 1MB)."""
-    return list_complete_excels()[-1]
+    """Retorna o arquivo mais recente com >= 1MB (relatório completo do mês).
+    Arquivos pequenos (<1MB) são relatórios diários usados apenas no merge
+    da CARTEIRA, mas não são suficientes para calcular DATA/FT700/SITE."""
+    all_files = glob.glob(os.path.join(SCRIPT_DIR, "rel_vendas_*.xlsx"))
+    complete = sorted(
+        [f for f in all_files if os.path.getsize(f) >= 1_000_000],
+        key=lambda f: os.path.basename(f)
+    )
+    if not complete:
+        raise FileNotFoundError("Nenhum arquivo >= 1MB encontrado.")
+    return complete[-1]  # mais recente entre os completos
 
 def _load_one(path):
     """Carrega um único Excel e detecta automaticamente a linha do cabeçalho.
