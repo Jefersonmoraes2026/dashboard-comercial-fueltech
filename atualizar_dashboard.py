@@ -89,20 +89,17 @@ def pareto_list(dct, top=20):
 
 # ── Carregamento do Excel ──────────────────────────────────────────────────────
 def list_complete_excels():
-    """Retorna todos os arquivos rel_vendas_*.xlsx >= 1MB, ordenados pelo nome."""
+    """Retorna TODOS os arquivos rel_vendas_*.xlsx ordenados pelo nome.
+    Inclui arquivos pequenos (relatórios diários) — a deduplicação por NF
+    em load_all_excels() evita dupla contagem."""
     all_files = glob.glob(os.path.join(SCRIPT_DIR, "rel_vendas_*.xlsx"))
     if not all_files:
         raise FileNotFoundError("Nenhum arquivo rel_vendas_*.xlsx encontrado em: " + SCRIPT_DIR)
-    complete = sorted(
-        [f for f in all_files if os.path.getsize(f) >= 1_000_000],
-        key=lambda f: os.path.basename(f)
-    )
-    skipped = [os.path.basename(f) for f in all_files if f not in complete]
-    if skipped:
-        log(f"  Ignorados (< 1MB): {', '.join(skipped)}")
-    if not complete:
-        raise FileNotFoundError("Nenhum arquivo >= 1MB encontrado.")
-    return complete          # ordenados do mais antigo ao mais recente
+    files = sorted(all_files, key=lambda f: os.path.basename(f))
+    for f in files:
+        size_mb = os.path.getsize(f) / 1_000_000
+        log(f"  Arquivo: {os.path.basename(f)} ({size_mb:.1f} MB)")
+    return files  # ordenados do mais antigo ao mais recente (pelo nome)
 
 def find_latest_excel():
     """Retorna apenas o arquivo mais recente (>= 1MB)."""
